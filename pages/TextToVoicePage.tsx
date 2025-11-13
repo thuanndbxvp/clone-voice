@@ -3,20 +3,6 @@ import { VoiceClone, TtsJob, TtsSourceType, GoogleTtsVoice } from '../types';
 import FileUploader from '../components/FileUploader';
 import { NavLink } from 'react-router-dom';
 
-// Mock data simulating Google TTS API response
-const mockGoogleVoices: GoogleTtsVoice[] = [
-    { name: 'vi-VN-Standard-A', languageCodes: ['vi-VN'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
-    { name: 'vi-VN-Wavenet-B', languageCodes: ['vi-VN'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
-    { name: 'vi-VN-Standard-C', languageCodes: ['vi-VN'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
-    { name: 'vi-VN-Wavenet-D', languageCodes: ['vi-VN'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
-    { name: 'en-US-Wavenet-D', languageCodes: ['en-US'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
-    { name: 'en-US-Standard-E', languageCodes: ['en-US'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
-    { name: 'en-GB-Standard-A', languageCodes: ['en-GB'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
-    { name: 'ja-JP-Standard-A', languageCodes: ['ja-JP'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
-    { name: 'ja-JP-Wavenet-B', languageCodes: ['ja-JP'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
-];
-
-
 type InputTab = 'text' | 'txt' | 'excel';
 type TtsProvider = 'clone' | 'google';
 
@@ -41,23 +27,39 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     const fetchGoogleVoices = useCallback(async () => {
         const geminiKey = localStorage.getItem('geminiApiKey');
         if (!geminiKey || geminiKey.trim() === '') {
-            setVoiceError('Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói.');
+            setVoiceError('Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói');
             setGoogleVoices([]);
             return;
         }
-        
+
         setIsLoadingVoices(true);
-        setVoiceError(null); // Clear previous errors before a new attempt
+        setVoiceError(null);
         try {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            // In a real app, you would check the response. If it's an auth error, set an appropriate error message.
-            setGoogleVoices(mockGoogleVoices);
+            const response = await fetch(`https://texttospeech.googleapis.com/v1/voices?key=${geminiKey}`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                const errorMessage = data?.error?.message || `Lỗi ${response.status}: ${response.statusText}`;
+                throw new Error(errorMessage);
+            }
+
+            if (data.voices && Array.isArray(data.voices)) {
+                setGoogleVoices(data.voices);
+            } else {
+                throw new Error('Định dạng phản hồi API không hợp lệ.');
+            }
         } catch (error) {
-            setVoiceError('Không thể tải danh sách giọng nói. Vui lòng kiểm tra lại API Key hoặc thử lại sau.');
+            let finalErrorMessage = 'Không thể tải danh sách giọng nói. Vui lòng thử lại sau.';
+             if (error instanceof Error && error.message.toLowerCase().includes("api key not valid")) {
+                finalErrorMessage = 'API Key không hợp lệ. Vui lòng kiểm tra lại';
+            }
+            setVoiceError(finalErrorMessage);
+            setGoogleVoices([]);
         } finally {
             setIsLoadingVoices(false);
         }
     }, []);
+
 
     // New handler to always trigger a fetch on click
     const handleGoogleProviderClick = useCallback(() => {
@@ -177,7 +179,7 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                                     {isLoadingVoices && <p className="text-sm text-gray-500">Đang tải danh sách giọng nói...</p>}
                                     {voiceError && (
                                         <p className="text-sm text-red-600">
-                                            {voiceError}{' '}
+                                            {voiceError}.{' '}
                                             <NavLink to="/settings" className="font-bold underline hover:text-red-700">
                                                 Đi đến Cài đặt
                                             </NavLink>
@@ -308,7 +310,7 @@ const TtsHistory: React.FC<{ jobs: TtsJob[] }> = ({ jobs }) => (
 const TextToVoicePage: React.FC = () => {
     // Mock Data
     const mockUserClones: VoiceClone[] = [
-        { id: '1', name: 'My Main Voice', createdAt: '2023-10-26T10:00:00Z', characterUsage: 50234, status: 'ready' },
+        { id: '1', name: 'My Main Voice', createdAt: '203-10-26T10:00:00Z', characterUsage: 50234, status: 'ready' },
         { id: '2', name: 'Test Voice ENG', createdAt: '2023-10-25T11:30:00Z', characterUsage: 1200, status: 'ready' },
         { id: '3', name: 'Giọng đọc truyện', createdAt: '2023-10-24T09:00:00Z', characterUsage: 87500, status: 'ready' },
     ];
