@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { VoiceClone, TtsJob, TtsSourceType, GoogleTtsVoice } from '../types';
 import FileUploader from '../components/FileUploader';
+import { NavLink } from 'react-router-dom';
 
 // Mock data simulating Google TTS API response
 const mockGoogleVoices: GoogleTtsVoice[] = [
@@ -21,7 +22,7 @@ type TtsProvider = 'clone' | 'google';
 
 const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     const [inputTab, setInputTab] = useState<InputTab>('excel');
-    const [ttsProvider, setTtsProvider] = useState<TtsProvider>('clone');
+    const [ttsProvider, setTtsProvider] = useState<TtsProvider>('google');
     const [text, setText] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [selectedCloneId, setSelectedCloneId] = useState<string>('');
@@ -39,24 +40,31 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
 
     const fetchGoogleVoices = useCallback(async () => {
         const geminiKey = localStorage.getItem('geminiApiKey');
-        if (!geminiKey) {
+        if (!geminiKey || geminiKey.trim() === '') {
             setVoiceError('Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói.');
+            setGoogleVoices([]); // Clear any stale voice data
             return;
         }
         
         setIsLoadingVoices(true);
         setVoiceError(null);
         // Simulate API call to fetch voices
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setGoogleVoices(mockGoogleVoices);
-        setIsLoadingVoices(false);
+        try {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            setGoogleVoices(mockGoogleVoices);
+        } catch (error) {
+            setVoiceError('Không thể tải danh sách giọng nói. Vui lòng kiểm tra lại API Key.');
+        } finally {
+            setIsLoadingVoices(false);
+        }
     }, []);
 
     useEffect(() => {
-        if (ttsProvider === 'google' && googleVoices.length === 0) {
+        // Fetch if provider is google AND (we have no voices OR there was a previous error)
+        if (ttsProvider === 'google' && (googleVoices.length === 0 || voiceError)) {
             fetchGoogleVoices();
         }
-    }, [ttsProvider, googleVoices.length, fetchGoogleVoices]);
+    }, [ttsProvider, voiceError, googleVoices.length, fetchGoogleVoices]);
     
     // Memoized filters for performance
     const availableLanguages = useMemo(() => {
@@ -65,6 +73,7 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     }, [googleVoices]);
 
     const filteredVoices = useMemo(() => {
+        if (googleVoices.length === 0) return [];
         return googleVoices.filter(voice => {
             const langMatch = voice.languageCodes.includes(selectedLanguageFilter);
             const genderMatch = selectedGenderFilter !== 'ALL' ? voice.ssmlGender === selectedGenderFilter : true;
@@ -80,10 +89,12 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     };
 
     const handleGenerate = () => {
-        const geminiKey = localStorage.getItem('geminiApiKey');
-        if (!geminiKey) {
-            alert('Vui lòng thiết lập API Key của Google/Gemini trong trang Cài đặt.');
-            return;
+        if(ttsProvider === 'google') {
+            const geminiKey = localStorage.getItem('geminiApiKey');
+             if (!geminiKey) {
+                alert('Vui lòng thiết lập API Key của Google/Gemini trong trang Cài đặt.');
+                return;
+            }
         }
 
         if (inputTab === 'text' && !text) { alert('Vui lòng nhập text'); return; }
@@ -140,14 +151,36 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
             <div className="space-y-6">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Chọn nguồn giọng</label>
-                    <div className="flex border border-gray-300 rounded-md overflow-hidden">
-                        <button onClick={() => setTtsProvider('clone')} className={`flex-1 py-2 text-sm font-semibold ${ttsProvider === 'clone' ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>Sử dụng Voice Clone</button>
-                        <button onClick={() => setTtsProvider('google')} className={`flex-1 py-2 text-sm font-semibold ${ttsProvider === 'google' ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>Sử dụng Giọng Google TTS</button>
+                     <div className="space-y-4">
+                        <div
+                            onClick={() => setTtsProvider('clone')}
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'clone' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                        >
+                             <h3 className="font-semibold text-gray-800">Sử dụng Voice Clone</h3>
+                        </div>
+
+                        <div
+                            className={`p-4 rounded-lg border-2 transition-all ${ttsProvider === 'google' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white'}`}
+                        >
+                            <div onClick={() => setTtsProvider('google')} className="cursor-pointer">
+                                <h3 className="font-semibold text-gray-800">Chọn giọng Google TTS</h3>
+                            </div>
+                            
+                            {/* Always render the content for Google provider to show status */}
+                            <div className="mt-3">
+                                {voiceError && (
+                                    <p className="text-sm text-red-600">
+                                        {voiceError}
+                                    </p>
+                                )}
+                                {isLoadingVoices && <p className="text-sm text-gray-500">Đang tải danh sách giọng nói...</p>}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 {ttsProvider === 'clone' && (
-                     <div>
+                     <div className="pt-4 border-t">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Chọn voice clone của bạn</label>
                         <select value={selectedCloneId} onChange={e => setSelectedCloneId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                             <option value="">-- Chọn voice clone --</option>
@@ -156,44 +189,39 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                     </div>
                 )}
 
-                {ttsProvider === 'google' && (
-                    <div className="p-4 border border-gray-200 rounded-md bg-gray-50">
-                        <div className="flex justify-between items-center mb-4">
-                             <h3 className="text-md font-semibold text-gray-800">Chọn giọng Google TTS</h3>
+                {ttsProvider === 'google' && !voiceError && !isLoadingVoices && googleVoices.length > 0 && (
+                    <div className="pt-4 border-t">
+                         <div className="flex justify-between items-center mb-4">
+                             <h3 className="text-md font-semibold text-gray-800">Tùy chọn giọng Google TTS</h3>
                              <button onClick={fetchGoogleVoices} disabled={isLoadingVoices} className="text-sm text-indigo-600 hover:text-indigo-800 disabled:opacity-50 flex items-center">
                                 <svg className={`w-4 h-4 mr-1 ${isLoadingVoices ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"></path></svg>
                                 {isLoadingVoices ? 'Đang tải...' : 'Làm mới'}
                              </button>
                         </div>
-                       
-                        {voiceError && <p className="text-sm text-red-600">{voiceError}</p>}
-                        
-                        {!voiceError && !isLoadingVoices && (
-                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Ngôn ngữ</label>
-                                    <select value={selectedLanguageFilter} onChange={e => setSelectedLanguageFilter(e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm">
-                                        {availableLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Giới tính</label>
-                                    <select value={selectedGenderFilter} onChange={e => setSelectedGenderFilter(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm">
-                                        <option value="ALL">Tất cả</option>
-                                        <option value="FEMALE">Nữ</option>
-                                        <option value="MALE">Nam</option>
-                                        <option value="NEUTRAL">Trung tính</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Giọng đọc</label>
-                                    <select value={selectedGoogleVoice} onChange={e => setSelectedGoogleVoice(e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm" disabled={filteredVoices.length === 0}>
-                                        <option value="">-- Chọn giọng đọc --</option>
-                                        {filteredVoices.map(voice => <option key={voice.name} value={voice.name}>{voice.name}</option>)}
-                                    </select>
-                                </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Ngôn ngữ</label>
+                                <select value={selectedLanguageFilter} onChange={e => setSelectedLanguageFilter(e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm">
+                                    {availableLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+                                </select>
                             </div>
-                        )}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Giới tính</label>
+                                <select value={selectedGenderFilter} onChange={e => setSelectedGenderFilter(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm">
+                                    <option value="ALL">Tất cả</option>
+                                    <option value="FEMALE">Nữ</option>
+                                    <option value="MALE">Nam</option>
+                                    <option value="NEUTRAL">Trung tính</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Giọng đọc</label>
+                                <select value={selectedGoogleVoice} onChange={e => setSelectedGoogleVoice(e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm" disabled={filteredVoices.length === 0}>
+                                    <option value="">-- Chọn giọng đọc --</option>
+                                    {filteredVoices.map(voice => <option key={voice.name} value={voice.name}>{voice.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
