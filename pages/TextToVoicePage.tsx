@@ -3,11 +3,21 @@ import { VoiceClone, TtsJob, TtsSourceType, GoogleTtsVoice } from '../types';
 import FileUploader from '../components/FileUploader';
 import { NavLink } from 'react-router-dom';
 import { supabase } from '../supabase/client';
+import { Session } from '@supabase/supabase-js';
 
 type InputTab = 'text' | 'txt' | 'excel';
 type TtsProvider = 'clone' | 'google';
 
-const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
+interface TextToVoicePageProps {
+    session: Session | null;
+}
+
+interface TtsFormProps {
+    userClones: VoiceClone[];
+    session: Session | null;
+}
+
+const TtsForm: React.FC<TtsFormProps> = ({ userClones, session }) => {
     const [inputTab, setInputTab] = useState<InputTab>('excel');
     const [ttsProvider, setTtsProvider] = useState<TtsProvider>('google');
     const [text, setText] = useState('');
@@ -17,7 +27,6 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     const [segmentSize, setSegmentSize] = useState(300);
     const [rowCount, setRowCount] = useState(0);
 
-    // State for Google Voices
     const [googleVoices, setGoogleVoices] = useState<GoogleTtsVoice[]>([]);
     const [isLoadingVoices, setIsLoadingVoices] = useState(false);
     const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -29,20 +38,35 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         setIsLoadingVoices(true);
         setVoiceError(null);
         try {
-            // Invoke the Supabase Edge Function
-            const { data, error } = await supabase.functions.invoke('google-tts-voices');
-
-            if (error) {
-                // Handle different kinds of errors from the edge function
-                if (error.message.includes('Function not found')) {
-                     throw new Error('Endpoint không tồn tại. Vui lòng liên hệ quản trị viên.');
+            let voicesData: any;
+            if (session) {
+                const { data, error } = await supabase.functions.invoke('google-tts-voices');
+                if (error) {
+                    if (error.message.includes('Function not found')) throw new Error('Endpoint không tồn tại.');
+                    const errorJson = JSON.parse(error.message);
+                    throw new Error(errorJson.error);
                 }
-                const errorJson = JSON.parse(error.message);
-                throw new Error(errorJson.error);
+                voicesData = data;
+            } else {
+                const apiKey = localStorage.getItem('google_api_key');
+                if (!apiKey) {
+                    throw new Error('API key not found');
+                }
+                const googleApiUrl = `https://texttospeech.googleapis.com/v1/voices?key=${apiKey}`;
+                const response = await fetch(googleApiUrl);
+                const data = await response.json();
+                if (!response.ok) {
+                    const errorMessage = data?.error?.message || `Google API Error: ${response.statusText}`;
+                    if (errorMessage.toLowerCase().includes("api key not valid")) {
+                        throw new Error('invalid');
+                    }
+                    throw new Error(errorMessage);
+                }
+                voicesData = data;
             }
 
-            if (data.voices && Array.isArray(data.voices)) {
-                setGoogleVoices(data.voices);
+            if (voicesData.voices && Array.isArray(voicesData.voices)) {
+                setGoogleVoices(voicesData.voices);
             } else {
                 throw new Error('Định dạng phản hồi từ server không hợp lệ.');
             }
@@ -62,7 +86,7 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         } finally {
             setIsLoadingVoices(false);
         }
-    }, []);
+    }, [session]);
 
     const handleGoogleProviderClick = useCallback(() => {
         setTtsProvider('google');
@@ -73,8 +97,7 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         if (ttsProvider === 'google') {
             fetchGoogleVoices();
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); 
+    }, [ttsProvider, fetchGoogleVoices]); 
 
     const availableLanguages = useMemo(() => {
         const langSet = new Set(googleVoices.flatMap(v => v.languageCodes));
@@ -306,7 +329,7 @@ const TtsHistory: React.FC<{ jobs: TtsJob[] }> = ({ jobs }) => (
 );
 
 
-const TextToVoicePage: React.FC = () => {
+const TextToVoicePage: React.FC<TextToVoicePageProps> = ({ session }) => {
     // Mock Data
     const mockUserClones: VoiceClone[] = [
         { id: '1', name: 'My Main Voice', createdAt: '203-10-26T10:00:00Z', characterUsage: 50234, status: 'ready' },
@@ -329,7 +352,7 @@ const TextToVoicePage: React.FC = () => {
                  <span>Đã sử dụng: <span className="font-semibold">140741 / 10000000</span></span>
             </div>
             
-            <TtsForm userClones={mockUserClones} />
+            <TtsForm userClones={mockUserClones} session={session} />
             <TtsHistory jobs={mockTtsJobs} />
         </div>
     );

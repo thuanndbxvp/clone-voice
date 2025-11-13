@@ -3,6 +3,16 @@ import { VoiceClone } from '../types';
 import FileUploader from '../components/FileUploader';
 import { NavLink } from 'react-router-dom';
 import { supabase } from '../supabase/client';
+import { Session } from '@supabase/supabase-js';
+
+interface VoiceClonesPageProps {
+  session: Session | null;
+}
+
+interface CreateCloneFormProps {
+    onCloneCreate: (name: string, description: string, file: File) => void;
+    session: Session | null;
+}
 
 const UserStatsHeader: React.FC = () => (
     <div className="flex flex-wrap items-center justify-between mb-6">
@@ -26,7 +36,7 @@ const UserStatsHeader: React.FC = () => (
     </div>
 );
 
-const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: string, file: File) => void }> = ({ onCloneCreate }) => {
+const CreateCloneForm: React.FC<CreateCloneFormProps> = ({ onCloneCreate, session }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [file, setFile] = useState<File | null>(null);
@@ -35,7 +45,6 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
 
     const handleFileSelect = (selectedFile: File) => {
         setError('');
-        // Validation logic
         const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/x-m4a'];
         if (!allowedTypes.includes(selectedFile.type)) {
             setError('Định dạng file không hợp lệ. Vui lòng chọn MP3, WAV, hoặc M4A.');
@@ -45,8 +54,6 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
             setError('Kích thước file không được vượt quá 50MB.');
             return;
         }
-        // Duration check would require a library like music-metadata-browser
-        // For this demo, we'll assume it's valid.
         setFile(selectedFile);
     };
 
@@ -54,21 +61,25 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
         setLoading(true);
         setError('');
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            setError('Bạn phải đăng nhập để thực hiện hành động này.');
-            setLoading(false);
-            return;
+        let hasApiKey = false;
+        if (session) {
+            const { data: credential, error: dbError } = await supabase
+                .from('provider_credentials')
+                .select('api_key')
+                .eq('user_id', session.user.id)
+                .eq('provider', 'elevenlabs')
+                .single();
+            if (!dbError && credential && credential.api_key) {
+                hasApiKey = true;
+            }
+        } else {
+            const apiKey = localStorage.getItem('elevenlabs_api_key');
+            if (apiKey) {
+                hasApiKey = true;
+            }
         }
         
-        const { data: credential, error: dbError } = await supabase
-            .from('provider_credentials')
-            .select('api_key')
-            .eq('user_id', user.id)
-            .eq('provider', 'elevenlabs')
-            .single();
-            
-        if (dbError || !credential || !credential.api_key) {
+        if (!hasApiKey) {
             setError('Vui lòng thiết lập API Key của ElevenLabs trong trang Cài đặt trước khi tạo voice clone.');
             setLoading(false);
             return;
@@ -81,7 +92,6 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
         }
 
         onCloneCreate(name, description, file);
-        // Reset form
         setName('');
         setDescription('');
         setFile(null);
@@ -173,7 +183,7 @@ const Disclaimer: React.FC = () => (
 );
 
 
-const VoiceClonesPage: React.FC = () => {
+const VoiceClonesPage: React.FC<VoiceClonesPageProps> = ({ session }) => {
     const [activeTab, setActiveTab] = useState<'system' | 'user'>('user');
     
     // Mock data
@@ -184,8 +194,8 @@ const VoiceClonesPage: React.FC = () => {
     
     const handleCreateClone = (name: string, description: string, file: File) => {
         console.log("Creating clone:", { name, description, fileName: file.name });
-        // TODO: Call Supabase service to upload file and create DB record.
-        // Show loading/progress indicator.
+        // TODO: Adapt this to save to localStorage if session is null,
+        // or call Supabase service to upload file and create DB record if session exists.
     };
 
     return (
@@ -204,7 +214,7 @@ const VoiceClonesPage: React.FC = () => {
             <div className="mt-8">
                 {activeTab === 'user' && (
                     <>
-                        <CreateCloneForm onCloneCreate={handleCreateClone} />
+                        <CreateCloneForm onCloneCreate={handleCreateClone} session={session} />
                         <VoiceCloneList clones={userClones} />
                         <Disclaimer />
                     </>
