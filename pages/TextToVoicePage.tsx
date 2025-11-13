@@ -42,29 +42,28 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         const geminiKey = localStorage.getItem('geminiApiKey');
         if (!geminiKey || geminiKey.trim() === '') {
             setVoiceError('Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói.');
-            setGoogleVoices([]); // Clear any stale voice data
+            setGoogleVoices([]);
             return;
         }
         
         setIsLoadingVoices(true);
-        setVoiceError(null);
-        // Simulate API call to fetch voices
+        setVoiceError(null); // Clear previous errors before a new attempt
         try {
             await new Promise(resolve => setTimeout(resolve, 1000));
+            // In a real app, you would check the response. If it's an auth error, set an appropriate error message.
             setGoogleVoices(mockGoogleVoices);
         } catch (error) {
-            setVoiceError('Không thể tải danh sách giọng nói. Vui lòng kiểm tra lại API Key.');
+            setVoiceError('Không thể tải danh sách giọng nói. Vui lòng kiểm tra lại API Key hoặc thử lại sau.');
         } finally {
             setIsLoadingVoices(false);
         }
     }, []);
 
     useEffect(() => {
-        // Fetch if provider is google AND (we have no voices OR there was a previous error)
-        if (ttsProvider === 'google' && (googleVoices.length === 0 || voiceError)) {
+        if (ttsProvider === 'google') {
             fetchGoogleVoices();
         }
-    }, [ttsProvider, voiceError, googleVoices.length, fetchGoogleVoices]);
+    }, [ttsProvider, fetchGoogleVoices]);
     
     // Memoized filters for performance
     const availableLanguages = useMemo(() => {
@@ -160,21 +159,21 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                         </div>
 
                         <div
-                            className={`p-4 rounded-lg border-2 transition-all ${ttsProvider === 'google' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white'}`}
+                            onClick={() => setTtsProvider('google')}
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'google' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                         >
-                            <div onClick={() => setTtsProvider('google')} className="cursor-pointer">
-                                <h3 className="font-semibold text-gray-800">Chọn giọng Google TTS</h3>
-                            </div>
+                            <h3 className="font-semibold text-gray-800">Chọn giọng Google TTS</h3>
                             
-                            {/* Always render the content for Google provider to show status */}
-                            <div className="mt-3">
-                                {voiceError && (
-                                    <p className="text-sm text-red-600">
-                                        {voiceError}
-                                    </p>
-                                )}
-                                {isLoadingVoices && <p className="text-sm text-gray-500">Đang tải danh sách giọng nói...</p>}
-                            </div>
+                            {ttsProvider === 'google' && (
+                                <div className="mt-3">
+                                    {isLoadingVoices && <p className="text-sm text-gray-500">Đang tải danh sách giọng nói...</p>}
+                                    {voiceError && (
+                                        <p className="text-sm text-red-600">
+                                            {voiceError} <NavLink to="/settings" className="font-bold underline hover:text-red-700">Đi đến Cài đặt</NavLink>.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
