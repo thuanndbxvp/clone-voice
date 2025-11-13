@@ -1,0 +1,5 @@
+{
+  "name": "AI Voice Clone & TTS",
+  "description": "A web application for cloning voices and converting text to speech using AI, with user management and usage tracking powered by Supabase.",
+  "requestFramePermissions": []
+}
