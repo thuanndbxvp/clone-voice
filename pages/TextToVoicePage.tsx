@@ -59,11 +59,19 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         }
     }, []);
 
+    // New handler to always trigger a fetch on click
+    const handleGoogleProviderClick = useCallback(() => {
+        setTtsProvider('google');
+        fetchGoogleVoices();
+    }, [fetchGoogleVoices]);
+
+    // This effect runs on initial mount if the default provider is google.
     useEffect(() => {
         if (ttsProvider === 'google') {
             fetchGoogleVoices();
         }
-    }, [ttsProvider, fetchGoogleVoices]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Empty array ensures it runs ONLY on mount.
     
     // Memoized filters for performance
     const availableLanguages = useMemo(() => {
@@ -153,14 +161,14 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                      <div className="space-y-4">
                         <div
                             onClick={() => setTtsProvider('clone')}
-                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'clone' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'clone' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                         >
                              <h3 className="font-semibold text-gray-800">Sử dụng Voice Clone</h3>
                         </div>
 
                         <div
-                            onClick={() => setTtsProvider('google')}
-                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'google' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                            onClick={handleGoogleProviderClick}
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${ttsProvider === 'google' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                         >
                             <h3 className="font-semibold text-gray-800">Chọn giọng Google TTS</h3>
                             
@@ -169,7 +177,10 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                                     {isLoadingVoices && <p className="text-sm text-gray-500">Đang tải danh sách giọng nói...</p>}
                                     {voiceError && (
                                         <p className="text-sm text-red-600">
-                                            {voiceError} <NavLink to="/settings" className="font-bold underline hover:text-red-700">Đi đến Cài đặt</NavLink>.
+                                            {voiceError}{' '}
+                                            <NavLink to="/settings" className="font-bold underline hover:text-red-700">
+                                                Đi đến Cài đặt
+                                            </NavLink>
                                         </p>
                                     )}
                                 </div>
