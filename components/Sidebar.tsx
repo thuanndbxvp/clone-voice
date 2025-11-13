@@ -1,13 +1,9 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { UserProfile } from '../types';
+import { User } from '@supabase/supabase-js';
 
 interface SidebarProps {
-  user: {
-    name: string;
-    avatarUrl: string;
-  };
+  user: User;
   onLogout: () => void;
 }
 
@@ -35,6 +31,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout }) => {
   const baseLinkClass = "flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-colors";
   const inactiveLinkClass = "text-gray-300 hover:bg-gray-700 hover:text-white";
   const activeLinkClass = "bg-gray-900 text-white";
+  
+  const userName = user.user_metadata?.full_name || user.email;
+  const avatarUrl = user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'A')}&background=random`;
 
   return (
     <div className="flex flex-col w-64 bg-gray-800 text-white">
@@ -71,9 +70,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout }) => {
       </nav>
       <div className="px-4 py-4 border-t border-gray-700">
         <div className="flex items-center">
-          <img className="h-10 w-10 rounded-full object-cover" src={user.avatarUrl} alt="User Avatar" />
+          <img className="h-10 w-10 rounded-full object-cover" src={avatarUrl} alt="User Avatar" />
           <div className="ml-3">
-            <p className="text-sm font-medium text-white">{user.name}</p>
+            <p className="text-sm font-medium text-white truncate">{userName}</p>
           </div>
         </div>
         <button onClick={onLogout} className="w-full mt-4 flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors">

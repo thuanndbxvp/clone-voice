@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { VoiceClone } from '../types';
 import FileUploader from '../components/FileUploader';
 import { NavLink } from 'react-router-dom';
+import { supabase } from '../supabase/client';
 
 const UserStatsHeader: React.FC = () => (
     <div className="flex flex-wrap items-center justify-between mb-6">
@@ -31,6 +31,7 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
     const [description, setDescription] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const handleFileSelect = (selectedFile: File) => {
         setError('');
@@ -49,23 +50,42 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
         setFile(selectedFile);
     };
 
-    const handleSubmit = () => {
-        const elevenLabsKey = localStorage.getItem('elevenLabsApiKey');
-        if (!elevenLabsKey) {
+    const handleSubmit = async () => {
+        setLoading(true);
+        setError('');
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            setError('Bạn phải đăng nhập để thực hiện hành động này.');
+            setLoading(false);
+            return;
+        }
+        
+        const { data: credential, error: dbError } = await supabase
+            .from('provider_credentials')
+            .select('api_key')
+            .eq('user_id', user.id)
+            .eq('provider', 'elevenlabs')
+            .single();
+            
+        if (dbError || !credential || !credential.api_key) {
             setError('Vui lòng thiết lập API Key của ElevenLabs trong trang Cài đặt trước khi tạo voice clone.');
+            setLoading(false);
             return;
         }
 
         if (!name || !file) {
             setError('Vui lòng nhập Tên Voice Clone và chọn một file audio.');
+            setLoading(false);
             return;
         }
-        setError('');
+
         onCloneCreate(name, description, file);
         // Reset form
         setName('');
         setDescription('');
         setFile(null);
+        setLoading(false);
     };
     
     return (
@@ -107,8 +127,8 @@ const CreateCloneForm: React.FC<{ onCloneCreate: (name: string, description: str
                     </div>
                 </div>
                 <div className="mt-8 flex justify-end">
-                    <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Tạo voice clone
+                    <button onClick={handleSubmit} disabled={loading} className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+                        {loading ? 'Đang xử lý...' : 'Tạo voice clone'}
                     </button>
                 </div>
             </div>

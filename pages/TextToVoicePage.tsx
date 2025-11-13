@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { VoiceClone, TtsJob, TtsSourceType, GoogleTtsVoice } from '../types';
 import FileUploader from '../components/FileUploader';
 import { NavLink } from 'react-router-dom';
+import { supabase } from '../supabase/client';
 
 type InputTab = 'text' | 'txt' | 'excel';
 type TtsProvider = 'clone' | 'google';
@@ -25,33 +26,36 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
     const [selectedGoogleVoice, setSelectedGoogleVoice] = useState('');
 
     const fetchGoogleVoices = useCallback(async () => {
-        const geminiKey = localStorage.getItem('geminiApiKey');
-        if (!geminiKey || geminiKey.trim() === '') {
-            setVoiceError('Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói');
-            setGoogleVoices([]);
-            return;
-        }
-
         setIsLoadingVoices(true);
         setVoiceError(null);
         try {
-            const response = await fetch(`https://texttospeech.googleapis.com/v1/voices?key=${geminiKey}`);
-            const data = await response.json();
+            // Invoke the Supabase Edge Function
+            const { data, error } = await supabase.functions.invoke('google-tts-voices');
 
-            if (!response.ok) {
-                const errorMessage = data?.error?.message || `Lỗi ${response.status}: ${response.statusText}`;
-                throw new Error(errorMessage);
+            if (error) {
+                // Handle different kinds of errors from the edge function
+                if (error.message.includes('Function not found')) {
+                     throw new Error('Endpoint không tồn tại. Vui lòng liên hệ quản trị viên.');
+                }
+                const errorJson = JSON.parse(error.message);
+                throw new Error(errorJson.error);
             }
 
             if (data.voices && Array.isArray(data.voices)) {
                 setGoogleVoices(data.voices);
             } else {
-                throw new Error('Định dạng phản hồi API không hợp lệ.');
+                throw new Error('Định dạng phản hồi từ server không hợp lệ.');
             }
         } catch (error) {
-            let finalErrorMessage = 'Không thể tải danh sách giọng nói. Vui lòng thử lại sau.';
-             if (error instanceof Error && error.message.toLowerCase().includes("api key not valid")) {
-                finalErrorMessage = 'API Key không hợp lệ. Vui lòng kiểm tra lại';
+             let finalErrorMessage = 'Không thể tải danh sách giọng nói.';
+            if (error instanceof Error) {
+                if (error.message.includes('API key not found')) {
+                    finalErrorMessage = 'Vui lòng cấu hình Google Cloud API Key trong Cài đặt để tải danh sách giọng nói';
+                } else if (error.message.includes('invalid')) {
+                    finalErrorMessage = 'API Key không hợp lệ. Vui lòng kiểm tra lại';
+                } else {
+                    finalErrorMessage = error.message;
+                }
             }
             setVoiceError(finalErrorMessage);
             setGoogleVoices([]);
@@ -60,22 +64,18 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         }
     }, []);
 
-
-    // New handler to always trigger a fetch on click
     const handleGoogleProviderClick = useCallback(() => {
         setTtsProvider('google');
         fetchGoogleVoices();
     }, [fetchGoogleVoices]);
 
-    // This effect runs on initial mount if the default provider is google.
     useEffect(() => {
         if (ttsProvider === 'google') {
             fetchGoogleVoices();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty array ensures it runs ONLY on mount.
-    
-    // Memoized filters for performance
+    }, []); 
+
     const availableLanguages = useMemo(() => {
         const langSet = new Set(googleVoices.flatMap(v => v.languageCodes));
         return Array.from(langSet).sort();
@@ -97,13 +97,10 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
         if (inputTab === 'txt') setRowCount(25); // Mock
     };
 
-    const handleGenerate = () => {
-        if(ttsProvider === 'google') {
-            const geminiKey = localStorage.getItem('geminiApiKey');
-             if (!geminiKey) {
-                alert('Vui lòng thiết lập API Key của Google/Gemini trong trang Cài đặt.');
-                return;
-            }
+    const handleGenerate = async () => {
+        if(ttsProvider === 'google' && googleVoices.length === 0) {
+            setVoiceError('Vui lòng cấu hình Google Cloud API Key và tải danh sách giọng nói trước.');
+            return;
         }
 
         if (inputTab === 'text' && !text) { alert('Vui lòng nhập text'); return; }
@@ -180,9 +177,11 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                                     {voiceError && (
                                         <p className="text-sm text-red-600">
                                             {voiceError}.{' '}
+                                            {voiceError.includes("Cài đặt") &&
                                             <NavLink to="/settings" className="font-bold underline hover:text-red-700">
                                                 Đi đến Cài đặt
                                             </NavLink>
+                                            }
                                         </p>
                                     )}
                                 </div>
@@ -206,7 +205,7 @@ const TtsForm: React.FC<{ userClones: VoiceClone[] }> = ({ userClones }) => {
                          <div className="flex justify-between items-center mb-4">
                              <h3 className="text-md font-semibold text-gray-800">Tùy chọn giọng Google TTS</h3>
                              <button onClick={fetchGoogleVoices} disabled={isLoadingVoices} className="text-sm text-indigo-600 hover:text-indigo-800 disabled:opacity-50 flex items-center">
-                                <svg className={`w-4 h-4 mr-1 ${isLoadingVoices ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"></path></svg>
+                                <svg className={`w-4 h-4 mr-1 ${isLoadingVoices ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.181-3.183m-4.991-2.691L7.98 12.075M12 21a9 9 0 110-18 9 9 0 010 18z" /></svg>
                                 {isLoadingVoices ? 'Đang tải...' : 'Làm mới'}
                              </button>
                         </div>

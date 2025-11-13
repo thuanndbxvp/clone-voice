@@ -1,21 +1,65 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../supabase/client';
 
 const SettingsPage: React.FC = () => {
     const [elevenLabsKey, setElevenLabsKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
     const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        const savedElevenLabsKey = localStorage.getItem('elevenLabsApiKey') || '';
-        const savedGeminiKey = localStorage.getItem('geminiApiKey') || '';
-        setElevenLabsKey(savedElevenLabsKey);
-        setGeminiKey(savedGeminiKey);
+        const fetchKeys = async () => {
+            setLoading(true);
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                const { data, error } = await supabase
+                    .from('provider_credentials')
+                    .select('provider, api_key')
+                    .eq('user_id', session.user.id);
+
+                if (error) {
+                    console.error('Error fetching API keys:', error);
+                    setMessage(`Lỗi khi tải API keys: ${error.message}`);
+                } else if (data) {
+                    const elevenLabs = data.find(c => c.provider === 'elevenlabs');
+                    const google = data.find(c => c.provider === 'google');
+                    setElevenLabsKey(elevenLabs?.api_key || '');
+                    setGeminiKey(google?.api_key || '');
+                }
+            }
+            setLoading(false);
+        };
+        fetchKeys();
     }, []);
 
-    const handleSave = () => {
-        localStorage.setItem('elevenLabsApiKey', elevenLabsKey);
-        localStorage.setItem('geminiApiKey', geminiKey);
-        setMessage('API Keys đã được lưu thành công!');
+    const handleSave = async () => {
+        setSaving(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            setMessage('Lỗi: Không tìm thấy người dùng. Vui lòng đăng nhập lại.');
+            setSaving(false);
+            return;
+        }
+
+        const credentials = [
+            { user_id: user.id, provider: 'elevenlabs', api_key: elevenLabsKey },
+            // In the database, the provider for Gemini/Google TTS is stored as 'google'
+            { user_id: user.id, provider: 'google', api_key: geminiKey }
+        ];
+
+        // Using upsert to insert or update keys.
+        // NOTE: This requires a UNIQUE constraint on (user_id, provider) in your Supabase table.
+        const { error } = await supabase.from('provider_credentials').upsert(credentials, {
+            onConflict: 'user_id, provider'
+        });
+
+        if (error) {
+            setMessage(`Lỗi khi lưu: ${error.message}`);
+        } else {
+            setMessage('API Keys đã được lưu thành công!');
+        }
+        setSaving(false);
         setTimeout(() => setMessage(''), 3000);
     };
 
@@ -24,21 +68,29 @@ const SettingsPage: React.FC = () => {
         return `****-****-****-${key.slice(-4)}`;
     };
 
+    if (loading) {
+        return (
+             <div className="max-w-4xl mx-auto">
+                <h1 className="text-2xl font-bold text-gray-800">Cài đặt API</h1>
+                 <div className="mt-6 text-center">Đang tải cài đặt...</div>
+             </div>
+        )
+    }
+
     return (
         <div className="max-w-4xl mx-auto">
             <h1 className="text-2xl font-bold text-gray-800">Cài đặt API</h1>
             <p className="text-sm text-gray-500 mt-1 mb-6">
-                Thiết lập API Key để sử dụng cho các dịch vụ xử lý. API Keys của bạn được lưu trữ an toàn ngay trên trình duyệt.
+                Thiết lập API Key để sử dụng cho các dịch vụ xử lý. API Keys của bạn được lưu trữ an toàn trong cơ sở dữ liệu.
             </p>
 
             {message && (
-                <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6" role="alert">
+                <div className={`p-4 mb-6 rounded-md ${message.startsWith('Lỗi') ? 'bg-red-100 border-l-4 border-red-500 text-red-700' : 'bg-green-100 border-l-4 border-green-500 text-green-700'}`} role="alert">
                     <p>{message}</p>
                 </div>
             )}
 
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-8">
-                {/* ElevenLabs Settings */}
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">ElevenLabs API</h2>
                     <p className="text-sm text-gray-600 mt-1">Sử dụng để Clone Voice. Bạn có thể lấy API key từ trang quản trị của ElevenLabs.</p>
@@ -62,10 +114,9 @@ const SettingsPage: React.FC = () => {
 
                 <div className="border-t border-gray-200"></div>
 
-                {/* Google/Gemini Settings */}
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Google Cloud API (TTS & Gemini)</h2>
-                    <p className="text-sm text-gray-600 mt-1">Sử dụng cho chức năng Text to Speech (TTS) và các tính năng khác của Gemini. Bạn có thể lấy API key từ Google AI Studio hoặc Google Cloud Console.</p>
+                    <p className="text-sm text-gray-600 mt-1">Sử dụng cho chức năng Text to Speech (TTS). Bạn có thể lấy API key từ Google Cloud Console.</p>
                     <div className="mt-4">
                         <label htmlFor="gemini-key" className="block text-sm font-medium text-gray-700">
                             API Key
@@ -88,10 +139,24 @@ const SettingsPage: React.FC = () => {
             <div className="mt-6 flex justify-end">
                 <button
                     onClick={handleSave}
-                    className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    disabled={saving}
+                    className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400 disabled:cursor-not-allowed"
                 >
-                    Lưu thay đổi
+                    {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
+            </div>
+            
+            <div className="mt-8 text-sm text-gray-600 bg-gray-100 p-4 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Về việc thiết lập cơ sở dữ liệu</h3>
+                <p className="mt-2">Để tính năng này hoạt động, bạn cần tạo một bảng tên là `provider_credentials` trong Supabase với các cột sau:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>`id` (uuid, primary key)</li>
+                    <li>`user_id` (uuid, foreign key to `auth.users.id`)</li>
+                    <li>`provider` (text, ví dụ: 'google', 'elevenlabs')</li>
+                    <li>`api_key` (text)</li>
+                    <li>`created_at` (timestamp with time zone)</li>
+                </ul>
+                <p className="mt-2">Bạn cũng cần tạo một ràng buộc UNIQUE trên (`user_id`, `provider`) và kích hoạt Row Level Security (RLS) để đảm bảo người dùng chỉ có thể truy cập key của chính họ.</p>
             </div>
         </div>
     );
